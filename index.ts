@@ -68,14 +68,17 @@ app.post('/api/legal-research', async (req, res) => {
       },
       body: JSON.stringify({
         prompt
-      })
+      }),
+      // Add timeout to prevent hanging requests
+      signal: AbortSignal.timeout(600000) // 10 minute timeout
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Legal research API error:', response.status, errorText);
       return res.status(response.status).json({
-        error: `API request failed: ${response.status}`
+        error: `API request failed: ${response.status}`,
+        details: errorText
       });
     }
 
@@ -183,9 +186,21 @@ app.post('/api/legal-research', async (req, res) => {
 
   } catch (error) {
     console.error('Error in legal-research function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-    res.status(500).json({
-      error: errorMessage
+    let errorMessage = 'An unexpected error occurred';
+    let statusCode = 500;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      // Handle timeout errors specifically
+      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+        statusCode = 504; // Gateway Timeout
+        errorMessage = 'Request to legal research API timed out. Please try again.';
+      }
+    }
+    
+    res.status(statusCode).json({
+      error: errorMessage,
+      timestamp: new Date().toISOString()
     });
   }
 });
