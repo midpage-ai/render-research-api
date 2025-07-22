@@ -248,10 +248,33 @@ app.get('/', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Legal Research API Server running on port ${PORT}`);
   console.log(`📧 Email functionality: ${process.env.RESEND_API_KEY ? 'Enabled' : 'Disabled'}`);
   console.log(`🔑 API Token: ${process.env.API_TOKEN ? 'Configured' : 'Missing'}`);
+  console.log(`🌐 Server URL: http://localhost:${PORT}`);
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  console.error('Server error:', error);
+});
+
+// Handle process termination
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down server...');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n🛑 Shutting down server...');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
 });
 
 export default app;
