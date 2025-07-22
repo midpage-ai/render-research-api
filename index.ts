@@ -44,12 +44,32 @@ interface EmailAttachment {
 
 // Function to create DOCX document
 async function createDocxDocument(content: string, documentName: string, isPlaintiff: boolean): Promise<string> {
-  // Parse markdown content to properly formatted text
-  const parseMarkdownToText = (markdown: string): string => {
+  // Parse markdown content and extract links
+  const parseMarkdownWithLinks = (markdown: string): { text: string; links: Array<{ text: string; url: string; start: number; end: number }> } => {
     let text = markdown;
+    const links: Array<{ text: string; url: string; start: number; end: number }> = [];
     
-    // Convert markdown links to readable format: [text](url) -> text (url)
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
+    // Find all markdown links and store their positions
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let match;
+    let offset = 0;
+    
+    while ((match = linkRegex.exec(markdown)) !== null) {
+      const [fullMatch, linkText, url] = match;
+      const start = match.index - offset;
+      const end = start + linkText.length;
+      
+      links.push({
+        text: linkText,
+        url: url,
+        start: start,
+        end: end
+      });
+      
+      // Replace the markdown link with just the text
+      text = text.replace(fullMatch, linkText);
+      offset += fullMatch.length - linkText.length;
+    }
     
     // Convert headers to plain text with prefix
     text = text.replace(/^### (.*$)/gm, '### $1\n');
@@ -62,6 +82,13 @@ async function createDocxDocument(content: string, documentName: string, isPlain
     // Convert italic to readable format: *text* -> *text*
     text = text.replace(/\*(.*?)\*/g, '*$1*');
     
+    // Handle outline structure - ensure proper breaks for lettered items
+    // More specific approach: look for "A. ... B." pattern
+    text = text.replace(/([A-Z]\.\s+[^.]*?\.)\s+([A-Z]\.\s+)/g, '$1\n$2');
+    
+    // Handle Roman numeral items - ensure proper breaks
+    text = text.replace(/([IVX]+\.\s+[^.]*?\.)\s+([IVX]+\.\s+)/g, '$1\n$2');
+    
     // Ensure proper paragraph breaks
     text = text.replace(/\n\n+/g, '\n\n');
     
@@ -69,13 +96,86 @@ async function createDocxDocument(content: string, documentName: string, isPlain
     text = text.replace(/^[-*+] (.*$)/gm, '• $1\n');
     text = text.replace(/^\d+\. (.*$)/gm, '• $1\n');
     
-    return text;
+    return { text, links };
   };
 
-  const parsedContent = parseMarkdownToText(content);
+  const { text: parsedContent, links } = parseMarkdownWithLinks(content);
+  
+  // Function to create paragraph with link formatting
+  const createParagraphWithLinks = (paragraphText: string): Paragraph => {
+    const children: TextRun[] = [];
+    let currentIndex = 0;
+    
+    // Sort links by start position
+    const sortedLinks = links.filter(link => 
+      paragraphText.includes(link.text) && 
+      paragraphText.indexOf(link.text) >= currentIndex
+    ).sort((a, b) => a.start - b.start);
+    
+    if (sortedLinks.length === 0) {
+      // No links in this paragraph
+      children.push(new TextRun({ text: paragraphText }));
+    } else {
+      // Process links in this paragraph
+      for (const link of sortedLinks) {
+        const linkStart = paragraphText.indexOf(link.text, currentIndex);
+        if (linkStart === -1) continue;
+        
+        // Add text before the link
+        if (linkStart > currentIndex) {
+          children.push(new TextRun({ 
+            text: paragraphText.substring(currentIndex, linkStart) 
+          }));
+        }
+        
+        // Add the link text with formatting
+        children.push(new TextRun({ 
+          text: link.text,
+          color: '0563C1', // Blue color
+          underline: {} // Underline
+        }));
+        
+        // Add the URL in parentheses
+        children.push(new TextRun({ 
+          text: ` (${link.url})`,
+          color: '666666', // Gray color
+          size: 20
+        }));
+        
+        currentIndex = linkStart + link.text.length;
+      }
+      
+      // Add remaining text after the last link
+      if (currentIndex < paragraphText.length) {
+        children.push(new TextRun({ 
+          text: paragraphText.substring(currentIndex) 
+        }));
+      }
+    }
+    
+    return new Paragraph({
+      children,
+      spacing: { after: 200 }
+    });
+  };
   
   // Split content into paragraphs and create proper paragraph elements
-  const paragraphs = parsedContent.split('\n\n').filter(p => p.trim().length > 0);
+  // First split by double newlines, then handle any remaining single newlines for outline items
+  let paragraphs = parsedContent.split('\n\n').filter(p => p.trim().length > 0);
+  
+  // Further split paragraphs that contain outline items on single newlines
+  const finalParagraphs: string[] = [];
+  for (const paragraph of paragraphs) {
+    if (paragraph.includes('\n')) {
+      // Split on single newlines for outline items
+      const subParagraphs = paragraph.split('\n').filter(p => p.trim().length > 0);
+      finalParagraphs.push(...subParagraphs);
+    } else {
+      finalParagraphs.push(paragraph);
+    }
+  }
+  
+  paragraphs = finalParagraphs;
   
   const doc = new Document({
     sections: [{
@@ -112,15 +212,8 @@ async function createDocxDocument(content: string, documentName: string, isPlain
             after: 400
           }
         }),
-        // Add each paragraph from the parsed content
-        ...paragraphs.map(paragraph => 
-          new Paragraph({
-            text: paragraph.trim(),
-            spacing: {
-              after: 200
-            }
-          })
-        ),
+        // Add each paragraph from the parsed content with link formatting
+        ...paragraphs.map(paragraph => createParagraphWithLinks(paragraph.trim())),
         new Paragraph({
           children: [
             new TextRun({

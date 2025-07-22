@@ -43,6 +43,13 @@ export class EmailService {
     // Convert italic to readable format: *text* -> *text*
     text = text.replace(/\*(.*?)\*/g, '*$1*');
     
+    // Handle outline structure - ensure proper breaks for lettered items
+    // More specific approach: look for "A. ... B." pattern
+    text = text.replace(/([A-Z]\.\s+[^.]*?\.)\s+([A-Z]\.\s+)/g, '$1\n$2');
+    
+    // Handle Roman numeral items - ensure proper breaks
+    text = text.replace(/([IVX]+\.\s+[^.]*?\.)\s+([IVX]+\.\s+)/g, '$1\n$2');
+    
     // Ensure proper paragraph breaks
     text = text.replace(/\n\n+/g, '\n\n');
     
