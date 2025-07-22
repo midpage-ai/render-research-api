@@ -44,6 +44,39 @@ interface EmailAttachment {
 
 // Function to create DOCX document
 async function createDocxDocument(content: string, documentName: string, isPlaintiff: boolean): Promise<string> {
+  // Parse markdown content to properly formatted text
+  const parseMarkdownToText = (markdown: string): string => {
+    let text = markdown;
+    
+    // Convert markdown links to readable format: [text](url) -> text (url)
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
+    
+    // Convert headers to plain text with prefix
+    text = text.replace(/^### (.*$)/gm, '### $1\n');
+    text = text.replace(/^## (.*$)/gm, '## $1\n');
+    text = text.replace(/^# (.*$)/gm, '# $1\n');
+    
+    // Convert bold to readable format: **text** -> **text**
+    text = text.replace(/\*\*(.*?)\*\*/g, '**$1**');
+    
+    // Convert italic to readable format: *text* -> *text*
+    text = text.replace(/\*(.*?)\*/g, '*$1*');
+    
+    // Ensure proper paragraph breaks
+    text = text.replace(/\n\n+/g, '\n\n');
+    
+    // Convert list items to bullet points
+    text = text.replace(/^[-*+] (.*$)/gm, '• $1\n');
+    text = text.replace(/^\d+\. (.*$)/gm, '• $1\n');
+    
+    return text;
+  };
+
+  const parsedContent = parseMarkdownToText(content);
+  
+  // Split content into paragraphs and create proper paragraph elements
+  const paragraphs = parsedContent.split('\n\n').filter(p => p.trim().length > 0);
+  
   const doc = new Document({
     sections: [{
       properties: {},
@@ -79,12 +112,15 @@ async function createDocxDocument(content: string, documentName: string, isPlain
             after: 400
           }
         }),
-        new Paragraph({
-          text: content,
-          spacing: {
-            after: 400
-          }
-        }),
+        // Add each paragraph from the parsed content
+        ...paragraphs.map(paragraph => 
+          new Paragraph({
+            text: paragraph.trim(),
+            spacing: {
+              after: 200
+            }
+          })
+        ),
         new Paragraph({
           children: [
             new TextRun({
@@ -148,6 +184,13 @@ app.post('/api/legal-research', async (req, res) => {
 
     const result = await response.text();
     console.log('Legal research API response received, length:', result.length);
+    
+    // Log the response before sending email
+    console.log('=== LEGAL RESEARCH RESPONSE ===');
+    console.log('Response length:', result.length);
+    console.log('Response preview (first 500 chars):', result.substring(0, 500));
+    console.log('Response preview (last 500 chars):', result.substring(Math.max(0, result.length - 500)));
+    console.log('=== END RESPONSE LOG ===');
 
     // Send email if requested
     if (email) {

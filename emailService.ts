@@ -26,8 +26,38 @@ export class EmailService {
     this.resend = new Resend(apiKey);
   }
 
+  private parseMarkdownToText(markdown: string): string {
+    let text = markdown;
+    
+    // Convert markdown links to readable format: [text](url) -> text (url)
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
+    
+    // Convert headers to plain text with prefix
+    text = text.replace(/^### (.*$)/gm, '### $1\n');
+    text = text.replace(/^## (.*$)/gm, '## $1\n');
+    text = text.replace(/^# (.*$)/gm, '# $1\n');
+    
+    // Convert bold to readable format: **text** -> **text**
+    text = text.replace(/\*\*(.*?)\*\*/g, '**$1**');
+    
+    // Convert italic to readable format: *text* -> *text*
+    text = text.replace(/\*(.*?)\*/g, '*$1*');
+    
+    // Ensure proper paragraph breaks
+    text = text.replace(/\n\n+/g, '\n\n');
+    
+    // Convert list items to bullet points
+    text = text.replace(/^[-*+] (.*$)/gm, '• $1\n');
+    text = text.replace(/^\d+\. (.*$)/gm, '• $1\n');
+    
+    return text;
+  }
+
   private generatePDF(data: EmailData): string {
     const { prompt, result, isPlaintiff, fileData } = data;
+    
+    // Parse markdown content to properly formatted text
+    const parsedResult = this.parseMarkdownToText(result);
     
     // Create new PDF document
     const pdf = new jsPDF();
@@ -70,8 +100,8 @@ export class EmailService {
     pdf.setFontSize(10);
     yPosition += 10;
     
-    // Split result into lines that fit the page width
-    const resultLines = this.splitTextToFit(result, 170);
+    // Split parsed result into lines that fit the page width
+    const resultLines = this.splitTextToFit(parsedResult, 170);
     
     for (const line of resultLines) {
       if (yPosition > 250) {
@@ -112,6 +142,13 @@ export class EmailService {
 
   async sendLegalResearchEmail(data: EmailData): Promise<void> {
     try {
+      // Log the response before sending email
+      console.log('=== LEGAL RESEARCH RESPONSE ===');
+      console.log('Response length:', data.result.length);
+      console.log('Response preview (first 500 chars):', data.result.substring(0, 500));
+      console.log('Response preview (last 500 chars):', data.result.substring(Math.max(0, data.result.length - 500)));
+      console.log('=== END RESPONSE LOG ===');
+      
       console.log('Generating PDF for email...');
       const pdfBase64 = this.generatePDF(data);
       
