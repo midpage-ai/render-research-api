@@ -32,30 +32,8 @@ export class EmailService {
     // Convert markdown links to readable format: [text](url) -> text (url)
     text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
     
-    // Convert headers to plain text with prefix
-    text = text.replace(/^### (.*$)/gm, '### $1\n');
-    text = text.replace(/^## (.*$)/gm, '## $1\n');
-    text = text.replace(/^# (.*$)/gm, '# $1\n');
-    
-    // Convert bold to readable format: **text** -> **text**
-    text = text.replace(/\*\*(.*?)\*\*/g, '**$1**');
-    
-    // Convert italic to readable format: *text* -> *text*
-    text = text.replace(/\*(.*?)\*/g, '*$1*');
-    
-    // Handle outline structure - ensure proper breaks for lettered items
-    // More specific approach: look for "A. ... B." pattern
-    text = text.replace(/([A-Z]\.\s+[^.]*?\.)\s+([A-Z]\.\s+)/g, '$1\n$2');
-    
-    // Handle Roman numeral items - ensure proper breaks
-    text = text.replace(/([IVX]+\.\s+[^.]*?\.)\s+([IVX]+\.\s+)/g, '$1\n$2');
-    
-    // Ensure proper paragraph breaks
+    // Ensure proper paragraph breaks (handle new line symbols)
     text = text.replace(/\n\n+/g, '\n\n');
-    
-    // Convert list items to bullet points
-    text = text.replace(/^[-*+] (.*$)/gm, '• $1\n');
-    text = text.replace(/^\d+\. (.*$)/gm, '• $1\n');
     
     return text;
   }

@@ -71,30 +71,8 @@ async function createDocxDocument(content: string, documentName: string, isPlain
       offset += fullMatch.length - linkText.length;
     }
     
-    // Convert headers to plain text with prefix
-    text = text.replace(/^### (.*$)/gm, '### $1\n');
-    text = text.replace(/^## (.*$)/gm, '## $1\n');
-    text = text.replace(/^# (.*$)/gm, '# $1\n');
-    
-    // Convert bold to readable format: **text** -> **text**
-    text = text.replace(/\*\*(.*?)\*\*/g, '**$1**');
-    
-    // Convert italic to readable format: *text* -> *text*
-    text = text.replace(/\*(.*?)\*/g, '*$1*');
-    
-    // Handle outline structure - ensure proper breaks for lettered items
-    // More specific approach: look for "A. ... B." pattern
-    text = text.replace(/([A-Z]\.\s+[^.]*?\.)\s+([A-Z]\.\s+)/g, '$1\n$2');
-    
-    // Handle Roman numeral items - ensure proper breaks
-    text = text.replace(/([IVX]+\.\s+[^.]*?\.)\s+([IVX]+\.\s+)/g, '$1\n$2');
-    
-    // Ensure proper paragraph breaks
+    // Ensure proper paragraph breaks (handle new line symbols)
     text = text.replace(/\n\n+/g, '\n\n');
-    
-    // Convert list items to bullet points
-    text = text.replace(/^[-*+] (.*$)/gm, '• $1\n');
-    text = text.replace(/^\d+\. (.*$)/gm, '• $1\n');
     
     return { text, links };
   };
@@ -260,7 +238,8 @@ app.post('/api/legal-research', async (req, res) => {
         'Authorization': `Bearer ${apiToken}`
       },
       body: JSON.stringify({
-        prompt
+        prompt,
+        fileData
       }),
       // Add timeout to prevent hanging requests
       signal: AbortSignal.timeout(600000) // 10 minute timeout
@@ -349,12 +328,41 @@ app.post('/api/legal-research', async (req, res) => {
       }
     }
 
-    // Return the result as plain text
-    res.set({
-      'Content-Type': 'text/plain',
-      ...corsHeaders
-    });
-    res.send(result);
+    // If email is not specified, return DOCX file directly
+    if (!email) {
+      try {
+        console.log('Creating DOCX document for direct download...');
+        const docxContent = await createDocxDocument(result, fileData?.name || 'Unknown', isPlaintiff || false);
+        
+        // Convert base64 back to buffer
+        const docxBuffer = Buffer.from(docxContent, 'base64');
+        
+        // Set headers for DOCX download
+        res.set({
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Content-Disposition': `attachment; filename="legal-review-${isPlaintiff ? 'plaintiff' : 'defendant'}-${new Date().toISOString().split('T')[0]}.docx"`,
+          'Content-Length': docxBuffer.length.toString(),
+          ...corsHeaders
+        });
+        
+        res.send(docxBuffer);
+      } catch (docxError) {
+        console.error('Error creating DOCX:', docxError);
+        // Fallback to plain text if DOCX creation fails
+        res.set({
+          'Content-Type': 'text/plain',
+          ...corsHeaders
+        });
+        res.send(result);
+      }
+    } else {
+      // Return the result as plain text (for email requests)
+      res.set({
+        'Content-Type': 'text/plain',
+        ...corsHeaders
+      });
+      res.send(result);
+    }
 
   } catch (error) {
     console.error('Error in legal-research function:', error);
