@@ -20,7 +20,8 @@ app.use(cors({
   origin: '*',
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Increase limit to handle large file uploads
+app.use(express.urlencoded({ limit: '50mb', extended: true })); // Handle URL-encoded data
 
 // Types
 interface LegalResearchRequest {
@@ -33,7 +34,12 @@ interface LegalResearchRequest {
   };
 }
 
-
+interface EmailAttachment {
+  filename: string;
+  content: string;
+  type: string;
+  disposition: string;
+}
 
 // Main legal research endpoint
 app.post('/api/legal-research', async (req, res) => {
@@ -136,7 +142,7 @@ app.post('/api/legal-research', async (req, res) => {
           };
 
           // Create attachments array
-          const attachments = [];
+          const attachments: EmailAttachment[] = [];
           
           // Add original PDF if available
           if (fileData) {
