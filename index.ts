@@ -186,22 +186,11 @@ app.post('/api/legal-research', async (req, res) => {
 
   } catch (error) {
     console.error('Error in legal-research function:', error);
-    let errorMessage = 'An unexpected error occurred';
-    let statusCode = 500;
-    
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      // Handle timeout errors specifically
-      if (error.name === 'AbortError' || error.message.includes('timeout')) {
-        statusCode = 504; // Gateway Timeout
-        errorMessage = 'Request to legal research API timed out. Please try again.';
-      }
-    }
-    
-    res.status(statusCode).json({
-      error: errorMessage,
-      timestamp: new Date().toISOString()
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    res.status(500).json({
+      error: errorMessage
     });
+
   }
 });
 
@@ -229,4 +218,4 @@ app.listen(PORT, () => {
   console.log(`🔑 API Token: ${process.env.API_TOKEN ? 'Configured' : 'Missing'}`);
 });
 
-export default app; 
+export default app;
