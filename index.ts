@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { Resend } from 'resend';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +40,69 @@ interface EmailAttachment {
   content: string;
   type: string;
   disposition: string;
+}
+
+// Function to create DOCX document
+async function createDocxDocument(content: string, documentName: string, isPlaintiff: boolean): Promise<string> {
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children: [
+        new Paragraph({
+          text: `Legal ${isPlaintiff ? 'Plaintiff' : 'Defendant'} Review Results`,
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: {
+            after: 400,
+            before: 400
+          }
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Document: ${documentName}`,
+              bold: true
+            })
+          ],
+          spacing: {
+            after: 200
+          }
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Role: ${isPlaintiff ? 'Plaintiff' : 'Defendant'}`,
+              bold: true
+            })
+          ],
+          spacing: {
+            after: 400
+          }
+        }),
+        new Paragraph({
+          text: content,
+          spacing: {
+            after: 400
+          }
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Generated on ${new Date().toLocaleString()}`,
+              size: 20,
+              color: '666666'
+            })
+          ],
+          spacing: {
+            before: 400
+          }
+        })
+      ]
+    }]
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  return buffer.toString('base64');
 }
 
 // Main legal research endpoint
@@ -93,36 +157,8 @@ app.post('/api/legal-research', async (req, res) => {
         if (resendApiKey) {
           const resend = new Resend(resendApiKey);
           
-          // Create HTML content for the response attachment
-          const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Legal ${isPlaintiff ? 'Plaintiff' : 'Defendant'} Review Results</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-        .header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-        .content { white-space: pre-wrap; }
-        .meta { color: #666; font-size: 12px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Legal ${isPlaintiff ? 'Plaintiff' : 'Defendant'} Review Results</h1>
-        <p><strong>Document:</strong> ${fileData?.name || 'Unknown'}</p>
-        <p><strong>Role:</strong> ${isPlaintiff ? 'Plaintiff' : 'Defendant'}</p>
-    </div>
-    <div class="content">${result.replace(/\n/g, '<br>')}</div>
-    <div class="meta">
-        <p>Generated on ${new Date().toLocaleString()}</p>
-    </div>
-</body>
-</html>`;
-
-          // Convert HTML to base64
-          const htmlBase64 = Buffer.from(htmlContent, 'utf8').toString('base64');
+          // Create DOCX content for the response attachment
+          const docxContent = await createDocxDocument(result, fileData?.name || 'Unknown', isPlaintiff || false);
           
           const emailData: any = {
             from: 'Legal Review <noreply@resend.dev>',
@@ -136,7 +172,7 @@ app.post('/api/legal-research', async (req, res) => {
               <p><strong>Attachments:</strong></p>
               <ul>
                 <li>Original PDF document</li>
-                <li>HTML report with detailed analysis</li>
+                <li>DOCX report with detailed analysis</li>
               </ul>
               <p style="margin-top: 20px; color: #666; font-size: 12px;">
                 Generated on ${new Date().toLocaleString()}
@@ -157,11 +193,11 @@ app.post('/api/legal-research', async (req, res) => {
             });
           }
           
-          // Add HTML report
+          // Add DOCX report
           attachments.push({
-            filename: `legal-review-${isPlaintiff ? 'plaintiff' : 'defendant'}-${new Date().toISOString().split('T')[0]}.html`,
-            content: htmlBase64,
-            type: 'text/html',
+            filename: `legal-review-${isPlaintiff ? 'plaintiff' : 'defendant'}-${new Date().toISOString().split('T')[0]}.docx`,
+            content: docxContent,
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             disposition: 'attachment'
           });
           
